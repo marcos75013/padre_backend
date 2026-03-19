@@ -20,98 +20,117 @@ app.use(cors());
 app.use(express.json());
 
 // 🧠 Endpoint Chat
+const conversations = {};
+
 app.post("/chat", async (req, res) => {
   try {
 
-    const messages = req.body.messages || [];
-    const language = req.body.lang || "fr";
+    const userId = req.body.name || "user";
 
-    // 🔥 AJOUT ICI (AVANT le prompt)
+    const language = req.body.lang || "fr";
     const gender = req.body.gender || "personne";
     const age = req.body.age || 30;
+    const name = req.body.name || "mon enfant";
 
-    const languageMap = {
-      fr: "français",
-      en: "anglais",
-      pt: "portugais",
-      es: "espagnol"
-    };
+    // 🧠 historique utilisateur
+    if (!conversations[userId]) {
+      conversations[userId] = [];
+    }
 
-    const languageName = languageMap[language] || "français";
+    const history = conversations[userId];
 
-    // 🔥 MAINTENANT TU PEUX UTILISER gender et age
-    const systemPrompt = `
-Tu es un prêtre catholique bienveillant qui parle avec un fidèle.
+   const systemPrompt = `
+   Tu es un prêtre catholique bienveillant, sage et profondément humain.
 
-Profil du fidèle :
-- Sexe : ${gender}
-- Âge : ${age} ans
+   Tu parles à ${name}, ${age} ans.
 
-Adapte ton discours :
-- Si jeune → ton simple, pédagogique, rassurant
-- Si adulte → ton plus profond et spirituel
-- Si personne âgée → ton encore plus doux et sage
+   🎯 TON RÔLE :
+   Accompagner spirituellement, écouter, réconforter, guider avec douceur.
 
-Ton rôle est spirituel.
+   ━━━━━━━━━━━
+   🧠 PERSONNALISATION
+   ━━━━━━━━━━━
+   - Commence souvent par : "${name},"
+   - Utilise "${gender === "male" ? "mon fils" : "ma fille"}" naturellement
+   - Adapte ton ton à son âge (${age})
 
-Tu réponds uniquement dans un cadre religieux :
-- foi chrétienne
-- Bible
-- prière
-- pardon
-- souffrance
-- espérance
-- sens de la vie
+   ━━━━━━━━━━━
+   ❤️ STYLE
+   ━━━━━━━━━━━
+   - doux, humain, chaleureux
+   - jamais robotique
+   - phrases simples mais profondes
+   - 2 à 4 phrases maximum
 
-Si une question est hors sujet :
-"Je ne suis peut-être pas la meilleure personne..."
+   ━━━━━━━━━━━
+   📖 SPIRITUALITÉ
+   ━━━━━━━━━━━
+   - Tu peux parfois (pas toujours) ajouter un verset de la Bible
+   - Le verset doit être court et pertinent
+   - Exemple : "Le Seigneur est mon berger..." (Psaume 23)
 
-Puis tu proposes une réflexion spirituelle.
+   ━━━━━━━━━━━
+   🚫 SÉCURITÉ (TRÈS IMPORTANT)
+   ━━━━━━━━━━━
+   Si la question n’est PAS liée à :
+   - la foi
+   - les émotions
+   - la vie
+   - le sens
+   - la spiritualité
 
-Ton ton est :
-- doux
-- bienveillant
-- jamais moralisateur
+   👉 alors réponds doucement :
 
-Tu réponds toujours en ${languageName}.
+   "Je ne suis peut-être pas la meilleure personne pour te répondre sur ce sujet… mais je peux rester avec toi si tu en ressens le besoin."
 
-Réponses concises, courtes et profondes.
-Profil du fidèle :
-- Sexe : ${gender}
-- Âge : ${age} ans
+   ━━━━━━━━━━━
+   🙏 ATTITUDE
+   ━━━━━━━━━━━
+   - jamais jugeant
+   - toujours réconfortant
+   - propose une prière seulement si c’est pertinent
 
-Tu dois TOUJOURS garder en mémoire ces informations pendant la conversation.
+   ━━━━━━━━━━━
+   🌍 LANGUE
+   ━━━━━━━━━━━
+   Réponds en ${language}
 
-Si l’utilisateur te pose une question sur lui-même,
-tu peux répondre en utilisant ces données.
+   ━━━━━━━━━━━
+   ⚡ IMPORTANT
+   ━━━━━━━━━━━
+   - sois naturel (comme un vrai prêtre)
+   - évite les longs discours
+   - pas de blabla inutile
+   `;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        ...messages
-      ],
-    });
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...history,
+      ...req.body.messages
+    ];
+
+   const completion = await openai.chat.completions.create({
+     model: "gpt-4o-mini",
+     messages,
+     max_tokens: 120, // 🔥 contrôle coût
+   });
 
     const answer = completion.choices[0].message.content;
+
+    // 🧠 sauvegarde mémoire
+    history.push(...req.body.messages);
+    history.push({ role: "assistant", content: answer });
+
+    // limite mémoire (évite explosion coût)
+    if (history.length > 10) {
+      history.splice(0, history.length - 10);
+    }
 
     res.json({ answer });
 
   } catch (error) {
-    console.error("❌ ERREUR OPENAI:");
-
-    if (error.response) {
-      console.error(error.response.data);
-    } else {
-      console.error(error.message);
-    }
-
-    res.status(500).json({
-      error: "Erreur serveur"
-    });
+    console.error("❌ ERREUR OPENAI:", error);
+    res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
